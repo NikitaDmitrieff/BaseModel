@@ -8,7 +8,6 @@ from base_model_config import setup_api_keys_and_langsmith
 from base_model_prompts import (
     RAG_USER_PROMPT_TEMPLATE,
     rag_prompt_format,
-    prompt_format,
 )
 from base_model_utils import (
     basic_inquiry,
@@ -169,15 +168,10 @@ class BaseModel:
 
     def generate_answer(
         self,
-        user_question: str = "Hi",
+        system_prompt: str = "",
+        user_prompt: str = "",
         model_type: str = None,
     ) -> tuple[str, str, str]:
-
-        system_prompt, user_prompt = prompt_format(
-            user_question=user_question,
-            system_template=self.system_prompt_template,
-            user_template=self.user_prompt_template,
-        )
 
         answer = basic_inquiry(
             system_prompt=system_prompt, user_prompt=user_prompt, model_type=model_type
