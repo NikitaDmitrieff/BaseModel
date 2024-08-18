@@ -4,6 +4,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.docstore.document import Document
 from langchain_community.vectorstores import FAISS
 
+from base_model_config import setup_api_keys_and_langsmith
 from base_model_utils import (
     basic_inquiry,
     load_pdfs_as_documents,
@@ -12,7 +13,6 @@ from base_model_utils import (
     convert_documents_to_text,
     clean_text,
 )
-from config import setup_api_keys_and_langsmith
 from prompt import (
     SYSTEM_PROMPT_TEMPLATE,
     RAG_SYSTEM_PROMPT_TEMPLATE,
