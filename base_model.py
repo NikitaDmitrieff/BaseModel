@@ -12,6 +12,7 @@ from base_model_utils import (
     convert_documents_to_text,
     clean_text,
 )
+from config import setup_api_keys_and_langsmith
 from prompt import (
     SYSTEM_PROMPT_TEMPLATE,
     RAG_SYSTEM_PROMPT_TEMPLATE,
@@ -36,7 +37,13 @@ class BaseModel:
         vector_store_separators: Optional[List[str]] = None,
         number_of_documents_to_retrieve: int = 4,
         verbose: bool = False,
+        langsmith_tracking: bool = False,
+        project_name: str = "to-delete",
     ):
+
+        setup_api_keys_and_langsmith(
+            langsmith_tracking=langsmith_tracking, project_name=project_name
+        )
 
         # Basic generator
         self.verbose = verbose
