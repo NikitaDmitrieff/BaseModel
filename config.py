@@ -8,10 +8,15 @@ from credentials import (
 import os
 
 
+def setup_openai_api_key():
+    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+
+
 def setup_api_keys_and_langsmith(
     langsmith_tracking: bool = True, project_name: str = None
 ):
-    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+    setup_openai_api_key()
+
     if langsmith_tracking:
         os.environ["LANGCHAIN_TRACING_V2"] = LANGCHAIN_TRACING_V2
         os.environ["LANGCHAIN_ENDPOINT"] = LANGCHAIN_ENDPOINT

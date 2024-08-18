@@ -1,85 +1,25 @@
-import os
-from functools import reduce
-
-from dotenv import load_dotenv
-from langchain.document_loaders import PyPDFLoader
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langsmith import traceable
-from credentials import OPENAI_API_KEY
 from typing import List, Optional
+
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.docstore.document import Document
+from langchain_community.vectorstores import FAISS
 
-
-@traceable()
-def load_model(model_type=None):
-
-    if not model_type:
-        model_type = "gpt-4o-mini"
-
-    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
-    model = ChatOpenAI(model=model_type)
-
-    return model
-
-
-@traceable()
-def load_embedding(embedding_type=None):
-
-    if not embedding_type:
-        embedding_type = "gpt-4o-mini"
-
-    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
-    model = OpenAIEmbeddings(model=embedding_type)
-
-    return model
-
-
-@traceable()
-def basic_inquiry(
-    system_prompt: str = "Translate the following from English into Italian",
-    user_prompt: str = "hi!",
-    model_type: str = None,
-    model=None,
-):
-
-    if not model:
-        model = load_model(model_type=model_type)
-
-    messages = [
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=user_prompt),
-    ]
-
-    result = model.invoke(messages).content
-
-    return result
-
-
-def load_pdfs_as_documents(
-    pdf_directory="/Users/nikita.dmitrieff/Desktop/Personal/Comet/data",
-):
-
-    if not pdf_directory:
-        pdf_directory = "/Users/nikita.dmitrieff/Desktop/Personal/Comet/data"
-
-    # Load all PDF files from the directory
-    pdf_loaders = []
-    for filename in os.listdir(pdf_directory):
-        if filename.endswith(".pdf"):
-            pdf_loaders.append(PyPDFLoader(os.path.join(pdf_directory, filename)))
-
-    # Load and split documents
-    docs = []
-    for loader in pdf_loaders:
-        docs.extend(loader.load())
-
-    return docs
-
-
-DOC_ORDER_KEY = "chunk_order"
+from base_model_utils import (
+    basic_inquiry,
+    load_pdfs_as_documents,
+    load_embedding,
+    reformat_query,
+    convert_documents_to_text,
+    clean_text,
+)
+from prompt import (
+    SYSTEM_PROMPT_TEMPLATE,
+    RAG_SYSTEM_PROMPT_TEMPLATE,
+    USER_PROMPT_TEMPLATE,
+    RAG_USER_PROMPT_TEMPLATE,
+    rag_prompt_format,
+    prompt_format,
+)
 
 
 class BaseModel:
@@ -88,17 +28,31 @@ class BaseModel:
         pdf_directory="/Users/nikita.dmitrieff/Desktop/Personal/Comet/data",
         system_template: str = SYSTEM_PROMPT_TEMPLATE,
         user_template: str = USER_PROMPT_TEMPLATE,
+        rag_system_template: str = RAG_SYSTEM_PROMPT_TEMPLATE,
+        rag_user_template: str = RAG_USER_PROMPT_TEMPLATE,
+        hyde_augmentation: bool = True,
         vector_store_chunk_size_in_tokens: int = 250,
         vector_store_chunk_overlap_in_tokens: int = 25,
         vector_store_separators: Optional[List[str]] = None,
-        number_of_documents_to_retrieve: int = 2,
+        number_of_documents_to_retrieve: int = 4,
         verbose: bool = False,
     ):
 
+        # Basic generator
         self.verbose = verbose
+        self.system_prompt_template = system_template
+        self.user_prompt_template = user_template
 
+        # RAG pipeline - important parameters
         self.vector_store = None
-        self.embeddings = load_embedding()
+        self.similarity_search_by_vector = False
+        self.hyde_augmentation = hyde_augmentation
+        self.pdf_directory = pdf_directory
+        self.rag_system_prompt_template = rag_system_template
+        self.rag_user_prompt_template = rag_user_template
+
+        # RAG pipeline - other tunable parameters
+        self.embedding_model = load_embedding()
         self.vector_store_chunk_size_in_tokens = vector_store_chunk_size_in_tokens
         self.vector_store_chunk_overlap_in_tokens = vector_store_chunk_overlap_in_tokens
 
@@ -107,13 +61,7 @@ class BaseModel:
         self.vector_store_separators = vector_store_separators
 
         self.number_of_documents_to_retrieve = number_of_documents_to_retrieve
-        self.pdf_directory = pdf_directory
-
-        self.system_prompt_template = system_template
-        self.user_prompt_template = user_template
-
         self._db_size = None
-        self._db = None
 
         return
 
@@ -128,7 +76,7 @@ class BaseModel:
             separators=self.vector_store_separators,
         )
 
-        documents = load_pdf_documents(pdf_directory=self.pdf_directory)
+        documents = load_pdfs_as_documents(pdf_directory=self.pdf_directory)
 
         if documents == []:
             raise ValueError("Empty documents")
@@ -136,10 +84,8 @@ class BaseModel:
         chunks = text_splitter.split_documents(documents)
         self._db_size = len(chunks)
 
-        # Chunk order is stored in metadata to be able to sort retrieve chunks by order of appearance in the document
-        metadatas = [{DOC_ORDER_KEY: i} for i in range(len(documents))]
+        metadatas = [{"order": i} for i in range(len(documents))]
 
-        # Assign metadata to each document
         for i, doc in enumerate(documents):
             doc.metadata.update(metadatas[i])
 
@@ -150,15 +96,18 @@ class BaseModel:
 
         if self.verbose:
             for document in documents:
-                print(document.page_content.lower().count("neoma"))
-                print(document.page_content.lower()[40:55])
+                print(document.page_content.lower()[40:60])
 
     def retrieve_documents(
         self,
         query: str = None,
         force_db_delete=False,
-    ):
+    ) -> List[Document]:
+        """
+        Main function for RAG:
+        """
 
+        # create vector store if necessary
         if not self.vector_store or force_db_delete:
             try:
                 self.vector_store.delete_collection()
@@ -167,30 +116,61 @@ class BaseModel:
 
             self.ingest_pdfs_to_vector_store()
 
-        if not query:
-            query = "Combien d'écoles en post-bac"
-
-        results = self.vector_store.similarity_search(
-            query, k=self.number_of_documents_to_retrieve
-        )
+        # retrieve documents from query
+        if self.similarity_search_by_vector:
+            embedding_vector = self.embeddings.embed_query(query)
+            results = self.vector_store.similarity_search_by_vector(embedding_vector)
+        else:
+            results = self.vector_store.similarity_search(
+                query, k=self.number_of_documents_to_retrieve
+            )
 
         return results
+
+    def generate_answer_using_rag(
+        self,
+        user_question: str = "Hi",
+        model_type: str = None,
+    ) -> tuple[str, str, str]:
+
+        # apply HYDE
+        if self.hyde_augmentation:
+            reformatted_query = reformat_query(user_question=user_question)
+        else:
+            reformatted_query = user_question
+
+        # retrieve and clean context as text
+        context_as_documents = self.retrieve_documents(query=reformatted_query)
+        context_as_text = convert_documents_to_text(documents=context_as_documents)
+        context_as_text_cleaned = clean_text(text=context_as_text)
+
+        # create prompt
+        system_prompt, user_prompt = rag_prompt_format(
+            user_question=user_question,
+            context=context_as_text_cleaned,
+            system_template=self.rag_system_prompt_template,
+            user_template=self.rag_user_prompt_template,
+        )
+
+        # ask gpt and clean answer
+        answer = basic_inquiry(
+            system_prompt=system_prompt, user_prompt=user_prompt, model_type=model_type
+        )
+
+        answer = (
+            answer.replace("< lang=" rf">", "").replace("html", "").replace("```", "")
+        )
+
+        return answer, system_prompt, user_prompt
 
     def generate_answer(
         self,
         user_question: str = "Hi",
         model_type: str = None,
-    ) -> str:
-
-        reformatted_query = reformat_query(user_question=user_question)
-
-        context_as_documents = self.retrieve_documents(query=reformatted_query)
-        context_as_text = convert_documents_to_text(documents=context_as_documents)
-        context_as_text_cleaned = clean_text(text=context_as_text)
+    ) -> tuple[str, str, str]:
 
         system_prompt, user_prompt = prompt_format(
             user_question=user_question,
-            context=context_as_text_cleaned,
             system_template=self.system_prompt_template,
             user_template=self.user_prompt_template,
         )
@@ -203,44 +183,12 @@ class BaseModel:
             answer.replace("< lang=" rf">", "").replace("html", "").replace("```", "")
         )
 
-        print(answer)
-
         return answer, system_prompt, user_prompt
 
 
-def reformat_query(user_question: str = "Hi", model_type: str = "gpt-3.5-turbo-0125"):
-
-    reformatted_query = basic_inquiry(
-        system_prompt="",
-        user_prompt=HYDE_PROMPT_TEMPLATE.format(QUESTION=user_question),
-        model_type=model_type,
-    )
-
-    return reformatted_query
-
-
-def convert_documents_to_text(documents):
-
-    documents.sort(key=lambda doc: doc.metadata.get(DOC_ORDER_KEY))
-    text = "\n\n".join([doc.page_content for doc in documents])
-
-    return text
-
-
-def clean_text(text: str) -> str:
-
-    cleaned_text = text.replace("The Comet Project   2022-2023", " ").replace(
-        "The Comet Project  2022-2023", " "
-    )
-
-    return cleaned_text
-
-
 if __name__ == "__main__":
-    guidance_counselor = GuidanceCounselor(
-        pdf_directory="/Users/nikita.dmitrieff/Desktop/Personal/Comet/data",
-    )
+    chat = BaseModel()
 
-    print(guidance_counselor.generate_answer(user_question="C'est quoi Néoma ?"))
+    print(chat.generate_answer(user_question="C'est quoi Néoma ?"))
 
     pass
