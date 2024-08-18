@@ -1,15 +1,15 @@
 SYSTEM_PROMPT_TEMPLATE = """
-Vous êtes un coach d'orientation expérimenté, spécialisé dans l'accompagnement des étudiants. Soyez informatif, serviable et encourageant.
+You are an experienced guidance counselor, specializing in supporting students. Be informative, helpful, and encouraging.
 """
 
-USER_PROMPT_TEMPLATE = """Répondez à la question suivante: {question}
-Réponse:"""
+USER_PROMPT_TEMPLATE = """Answer the following question: {question}
+Answer:"""
 
 RAG_SYSTEM_PROMPT_TEMPLATE = """
-Vous êtes un coach d'orientation expérimenté, spécialisé dans l'accompagnement des étudiants. Soyez informatif, serviable et encourageant.
+You are an experienced guidance counselor, specializing in supporting students. Be informative, helpful, and encouraging.
 """
 
-RAG_USER_PROMPT_TEMPLATE = """Répondez à la question encadrée par %%% en basant votre réponse sur le contexte fourni entre ###:
+RAG_USER_PROMPT_TEMPLATE = """Answer the question framed by %%% based on the context provided between ###:
 
 %%% QUESTION
 
@@ -23,9 +23,9 @@ RAG_USER_PROMPT_TEMPLATE = """Répondez à la question encadrée par %%% en basa
 
 ###
 
-Réponse:"""
+Answer:"""
 
-HYDE_PROMPT_TEMPLATE = """Ecris un passage qui serait susceptible de répondre à la question suivante.
+HYDE_PROMPT_TEMPLATE = """Write a passage that would likely answer the following question.
 
 Question: {QUESTION}
 
