@@ -5,6 +5,11 @@ from langchain_community.docstore.document import Document
 from langchain_community.vectorstores import FAISS
 
 from base_model_config import setup_api_keys_and_langsmith
+from base_model_prompts import (
+    RAG_USER_PROMPT_TEMPLATE,
+    rag_prompt_format,
+    prompt_format,
+)
 from base_model_utils import (
     basic_inquiry,
     load_pdfs_as_documents,
@@ -13,23 +18,15 @@ from base_model_utils import (
     convert_documents_to_text,
     clean_text,
 )
-from prompt import (
-    SYSTEM_PROMPT_TEMPLATE,
-    RAG_SYSTEM_PROMPT_TEMPLATE,
-    USER_PROMPT_TEMPLATE,
-    RAG_USER_PROMPT_TEMPLATE,
-    rag_prompt_format,
-    prompt_format,
-)
 
 
 class BaseModel:
     def __init__(
         self,
         pdf_directory="/Users/nikita.dmitrieff/Desktop/Personal/Comet/data",
-        system_template: str = SYSTEM_PROMPT_TEMPLATE,
-        user_template: str = USER_PROMPT_TEMPLATE,
-        rag_system_template: str = RAG_SYSTEM_PROMPT_TEMPLATE,
+        system_template: str = "",
+        user_template: str = "",
+        rag_system_template: str = "",
         rag_user_template: str = RAG_USER_PROMPT_TEMPLATE,
         hyde_augmentation: bool = True,
         vector_store_chunk_size_in_tokens: int = 250,

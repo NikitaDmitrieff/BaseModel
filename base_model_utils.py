@@ -6,7 +6,7 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langsmith import traceable
 
 from base_model_credentials import OPENAI_API_KEY
-from prompt import HYDE_PROMPT_TEMPLATE
+from base_model_prompts import HYDE_PROMPT_TEMPLATE
 
 
 @traceable()
